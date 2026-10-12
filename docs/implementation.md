@@ -208,28 +208,27 @@ Detection Report
 
 ---
 
-## 7. Suggested Final Repository Structure
+## 7. Repository Structure
 
 ```
 kernel-module-rootkit-detector/
 ├── src/
-│   ├── main.c
-│   ├── module_scanner.c
-│   ├── module_scanner.h
-│   ├── metadata.c
-│   ├── metadata.h
-│   ├── baseline.c
-│   ├── baseline.h
-│   ├── analyzer.c
-│   ├── analyzer.h
-│   ├── risk.c
-│   └── risk.h
-├── baseline/
-│   └── modules.txt
-├── tests/
-├── reports/
-├── Makefile
-└── README.md
+│   ├── main.c              CLI (list, scan, create-baseline, compare, report)
+│   ├── util.c/.h           safe helpers, module-name validation
+│   ├── module_scanner.c/.h /proc/modules parser                  (Phase 2)
+│   ├── moddep.c/.h         modules.dep index
+│   ├── metadata.c/.h       /sys/module metadata                  (Phase 3)
+│   ├── scan.c/.h           scan orchestration, cross-view
+│   ├── baseline.c/.h       baseline save/load/diff               (Phase 4)
+│   ├── analyzer.c/.h       anomaly rules                         (Phase 5)
+│   ├── risk.c/.h           weights and scoring                   (Phase 6)
+│   └── report.c/.h         text / JSON / log reporting           (Phase 7)
+├── tests/                  unit, integration, fuzz, fake-system fixtures, kmod/
+├── scripts/demo.sh         controlled demonstration              (Phase 8)
+├── baseline/               generated baseline (machine specific, git-ignored)
+├── reports/                saved reports and logs
+├── Dockerfile  Makefile  README.md
+└── docs/                   this plan, TESTING.md
 ```
 
 ---
@@ -246,3 +245,59 @@ At the end of implementation, the two-person team should have one working execut
 The first version should prioritize reliability and a clear demonstration over adding too many advanced features. Once the MVP works, optional extensions such as real-time monitoring, module hash verification, signed-module checks, JSON reports, or a dashboard can be added if time permits.
 
 **Implementation Target:** Build a working MVP first: Module Scanner → Metadata → Baseline → Comparison → Anomaly Detection → Risk Score → CLI Report.
+
+---
+
+## 9. Implementation Status
+
+All eight phases are implemented and verified (in Docker on Linux). Milestones
+below are the ones defined in section 4.
+
+| Phase | Status | Evidence |
+|---|---|---|
+| 1. Environment setup / module study | Done | project skeleton, Makefile, Dockerfile; builds warning-free with `-Wall -Wextra -Wpedantic -Wshadow` |
+| 2. Kernel module scanner | Done | `module_scanner.c`; malformed lines skipped and counted, hostile names rejected; `list` command |
+| 3. Metadata collection | Done | `metadata.c`, `moddep.c`; initstate, taint, version, srcversion, sizes, holders, install path; graceful when files are missing |
+| 4. Trusted baseline | Done | versioned, checksummed, atomically written file; validation on load; added/removed/changed diff; refuses to bless a compromised system |
+| 5. Anomaly detection engine | Done | 9 independent rule functions in `g_rules[]` producing 15 finding types, including the `/proc` vs `/sys` cross-view |
+| 6. Risk scoring | Done | weights in `risk.h`, 0-100 score, LOW/MEDIUM/HIGH/CRITICAL, every contributing indicator printed |
+| 7. CLI and reporting | Done | all five commands, text + JSON, `--output`, `--log` history, `--fail-on`, exit codes |
+| 8. Testing and demonstration | Done in simulation; real-VM run pending | 184 unit checks, 154 integration checks, ASan/UBSan clean, fuzzed; `scripts/demo.sh`. Loading the real `tests/kmod` module on a VM still has to be done by hand (`docs/TESTING.md`) |
+
+### Design decisions that differ from the original sketch
+
+* **Stateless commands.** The first skeleton kept scan results in globals, so
+  `list`/`compare`/`report` could never work as separate invocations. Every
+  command now scans for itself and the baseline lives on disk.
+* **Cross-view detection** (`/proc/modules` vs `/sys/module`) was added; it is
+  the strongest rootkit signal available to a user-space tool.
+* **Baseline integrity.** A tampered baseline would let an attacker whitelist
+  a rootkit, so the file carries a checksum and a bad file is a hard error
+  (exit 2), not a silent downgrade to "no baseline".
+* **Testability.** `--proc`, `--sys`, `--moddep`, `--kernel` let the test
+  suite fabricate whole systems, so detection logic is tested without root,
+  a VM, or loading modules.
+* **Removed** `finalize.c`, `utilities.c`, `report_helper.c`: unreferenced
+  duplicates of what `main.c` already did, replaced by `util.c` / `report.c`.
+* **Source encoding.** Most files had been committed as UTF-16 with CRLF
+  (PowerShell `>` redirection) and could not be compiled by gcc/clang; all are
+  UTF-8 with LF now.
+
+### Bugs found by testing during development
+
+* Live kernel test: `/proc/modules` writes "no dependencies" as `-`; the
+  baseline loader turned it into an empty string so every module showed
+  `DEPS_CHANGED`.
+* A module hidden from sysfs also reported `SRCVERSION_CHANGED` (its
+  srcversion was merely unreadable).
+* ASan: use-after-free in the baseline loader's error path.
+
+### Known limits / possible extensions
+
+* A rootkit that falsifies both views, or tampers with the detector or the
+  baseline file's location, cannot be ruled out from user space. Store the
+  baseline read-only/off-box for real use.
+* Optional extensions from section 8 not done: real-time monitoring, module
+  file hash verification, signed-module checks, dashboard.
+* `tests/kmod` has not been compiled in the dev environment (no kernel headers
+  for Docker Desktop's kernel).
