@@ -1,0 +1,8 @@
+.git
+build
+build-asan
+detector
+reports/*.txt
+reports/*.log
+reports/*.json
+baseline/trusted.baseline
