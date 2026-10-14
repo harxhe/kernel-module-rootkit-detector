@@ -130,10 +130,7 @@ TEST(analyzer_each_rule_fires)
     r = find_res(&a, "gone");
     CHECK(r && r->rec == NULL && has_rule(r, "MISSING"));
 
-    /* sorted: most findings first */
-    for (int i = 1; i < a.count; i++)
-        CHECK(a.items[i - 1].nfindings >= a.items[i].nfindings);
-    CHECK(a.flagged == 10); /* every module but "good" */
+    CHECK(a.flagged == 10); /* every module but "good" (ordering: see ut_scoring.c) */
     analyzer_free(&a);
 
     /* kernel mismatch: comparison-based rules must be skipped */
