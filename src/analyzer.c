@@ -167,11 +167,23 @@ const int g_rule_count = (int)(sizeof(g_rules) / sizeof(g_rules[0]));
 /* engine                                                               */
 /* ------------------------------------------------------------------ */
 
+/* Phase 6: weight every finding, sum, cap, map to a level. */
+static void finalize_result(module_result_t *r)
+{
+    int sum = 0;
+    for (int i = 0; i < r->nfindings; i++) {
+        r->findings[i].weight = risk_weight_for(r->findings[i].rule);
+        sum += r->findings[i].weight;
+    }
+    r->score = risk_cap(sum);
+    r->level = risk_level_from_score(r->score);
+}
+
 static int cmp_result(const void *a, const void *b)
 {
     const module_result_t *x = a, *y = b;
-    if (x->nfindings != y->nfindings)
-        return y->nfindings - x->nfindings;
+    if (x->score != y->score)
+        return y->score - x->score;
     return strcmp(x->name, y->name);
 }
 
@@ -201,6 +213,7 @@ int analyzer_run(const scan_result_t *scan, const baseline_t *baseline,
         rule_ctx_t ctx = {rec, res->base, &out->env};
         for (int r = 0; r < g_rule_count; r++)
             g_rules[r](&ctx, res);
+        finalize_result(res);
     }
 
     /* Modules that were in the baseline but are not present any more. */
@@ -214,13 +227,21 @@ int analyzer_run(const scan_result_t *scan, const baseline_t *baseline,
         res->base = &baseline->items[j];
         analysis_add_finding(res, "MISSING",
                              "was in the baseline but is no longer loaded");
+        finalize_result(res);
     }
 
     qsort(out->items, (size_t)out->count, sizeof(*out->items), cmp_result);
 
-    for (int i = 0; i < out->count; i++)
-        if (out->items[i].nfindings > 0)
+    for (int i = 0; i < out->count; i++) {
+        module_result_t *r = &out->items[i];
+        out->counts[r->level]++;
+        if (r->score > 0)
             out->flagged++;
+        if (r->score > out->max_score) {
+            out->max_score = r->score;
+            out->max_level = r->level;
+        }
+    }
     return 0;
 }
 
