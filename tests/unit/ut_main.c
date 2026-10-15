@@ -8,7 +8,7 @@ typedef struct {
 } ut_case_t;
 
 static ut_case_t g_tests[MAX_TESTS];
-static int g_ntests, g_checks, g_failed;
+static int g_ntests, g_checks, g_failed, g_quiet;
 
 void ut_register(const char *name, void (*fn)(void))
 {
@@ -33,14 +33,19 @@ static int cmp_tests(const void *a, const void *b)
     return strcmp(((const ut_case_t *)a)->name, ((const ut_case_t *)b)->name);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "-q") == 0)
+            g_quiet = 1;
     qsort(g_tests, (size_t)g_ntests, sizeof(g_tests[0]), cmp_tests);
     for (int i = 0; i < g_ntests; i++) {
         int before = g_failed;
         g_tests[i].fn();
-        printf("%-4s %s\n", g_failed == before ? "ok" : "FAIL", g_tests[i].name);
+        if (!g_quiet || g_failed != before)
+            printf("%-4s %s\n", g_failed == before ? "ok" : "FAIL", g_tests[i].name);
     }
-    printf("\n%d tests, %d checks, %d failed\n", g_ntests, g_checks, g_failed);
+    printf("%s%d tests, %d checks, %d failed\n", g_quiet ? "" : "\n", g_ntests, g_checks,
+           g_failed);
     return g_failed ? 1 : 0;
 }

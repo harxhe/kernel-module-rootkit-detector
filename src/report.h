@@ -2,6 +2,7 @@
 #define REPORT_H
 
 #include "analyzer.h"
+#include "ui.h"
 #include <stdio.h>
 
 /* Phase 7 - reporting. */
@@ -13,9 +14,16 @@ typedef struct {
     const char *baseline_path;
     const char *baseline_note;       /* why there is no baseline, or NULL */
     int full;                        /* list every module, not only flagged */
+    const ui_t *ui;                  /* styling for report_fancy(); NULL = plain */
+    int explain;                     /* print the raw evidence under each finding */
+    const char *proc_path;           /* shown in evidence; NULL = /proc/modules */
+    const char *sys_root;            /* shown in evidence; NULL = /sys/module */
 } report_ctx_t;
 
 void report_text(FILE *out, const report_ctx_t *ctx);
+/* Same information with colour, a boxed header and score bars. Needs ctx->ui;
+   report_text() output is never changed by styling. */
+void report_fancy(FILE *out, const report_ctx_t *ctx);
 void report_json(FILE *out, const report_ctx_t *ctx);
 
 /* Append a short history entry (one summary line + one line per flagged

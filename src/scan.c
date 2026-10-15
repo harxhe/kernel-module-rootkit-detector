@@ -184,6 +184,8 @@ int scan_run(const scan_config_t *cfg, scan_result_t *out, char *err,
     }
     memset(&second, 0, sizeof(second));
     out->proc_skipped = first.skipped;
+    out->t_proc_ms = now_ms() - t0;
+    double t1 = now_ms();
 
     if (cfg->moddep_path && moddep_load(cfg->moddep_path, &out->moddep) == 0)
         out->moddep_available = 1;
@@ -195,6 +197,8 @@ int scan_run(const scan_config_t *cfg, scan_result_t *out, char *err,
 
     /* Second look at /proc/modules, after sysfs, to close the race window. */
     int have_second = proc_view_read(cfg->proc_path, &second) == 0;
+    out->t_sys_ms = now_ms() - t1;
+    double t2 = now_ms();
 
     int rc = 0;
     for (int i = 0; i < first.count && rc == 0; i++) {
@@ -255,6 +259,7 @@ int scan_run(const scan_config_t *cfg, scan_result_t *out, char *err,
         qsort(out->records.items, (size_t)out->records.count,
               sizeof(*out->records.items), cmp_record);
 
+    out->t_cross_ms = now_ms() - t2;
     out->elapsed_ms = now_ms() - t0;
     return 0;
 }

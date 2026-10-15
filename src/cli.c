@@ -12,14 +12,18 @@
 
 #include "analyzer.h"
 #include "baseline.h"
+#include "monitor.h"
+#include "progress.h"
 #include "report.h"
 #include "scan.h"
+#include "ui.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
+#include <time.h>
 
 #define VERSION "1.0.0"
 
@@ -34,6 +38,10 @@ typedef struct {
     int json;
     int force;
     int quiet;
+    int explain;
+    double interval_s;
+    int count;
+    ui_mode_t ui_mode;
     risk_level_t fail_on;
 } options_t;
 
@@ -44,6 +52,7 @@ static int cmd_scan(const options_t *o);
 static int cmd_create_baseline(const options_t *o);
 static int cmd_compare(const options_t *o);
 static int cmd_report(const options_t *o);
+static int cmd_monitor(const options_t *o);
 
 static const struct {
     const char *name;
@@ -55,6 +64,7 @@ static const struct {
     {"create-baseline", cmd_create_baseline, "Record the current modules as the trusted baseline"},
     {"compare", cmd_compare, "Show modules added/removed/changed since the baseline"},
     {"report", cmd_report, "Full detection report (all modules, optional file/log)"},
+    {"monitor", cmd_monitor, "Keep watching: re-scan every few seconds and alert on changes"},
     {NULL, NULL, NULL},
 };
 
@@ -73,6 +83,11 @@ static void usage(FILE *out, const char *prog)
                  "                      (default high)\n"
                  "  --force             create-baseline even if the system looks compromised\n"
                  "  --quiet             do not print the report to stdout\n"
+                 "  --interval SECONDS  monitor: pause between scans (default 2)\n"
+                 "  --count N           monitor: stop after N scans (default: until Ctrl+C)\n"
+                 "  --explain           show the raw evidence under each finding (scan, report)\n"
+                 "  --ui MODE           auto|plain|fancy: colour and boxes on a terminal\n"
+                 "                      (default auto; files, pipes and --json stay plain)\n"
                  "  --proc FILE         /proc/modules path        (testing)\n"
                  "  --sys DIR           /sys/module path          (testing)\n"
                  "  --moddep FILE       modules.dep path          (testing)\n"
@@ -85,19 +100,25 @@ static void usage(FILE *out, const char *prog)
 
 /* ------------------------------------------------------------------ */
 
+static void make_scan_config(const options_t *o, scan_config_t *cfg, char *moddep,
+                             size_t moddep_sz)
+{
+    cfg->proc_path = o->proc_path;
+    cfg->sys_root = o->sys_root;
+    cfg->kernel_release = o->kernel;
+    if (o->moddep_path) {
+        cfg->moddep_path = o->moddep_path;
+    } else {
+        snprintf(moddep, moddep_sz, "/lib/modules/%s/modules.dep", o->kernel);
+        cfg->moddep_path = moddep;
+    }
+}
+
 static int run_scan(const options_t *o, scan_result_t *scan)
 {
     char moddep[600];
     scan_config_t cfg;
-    cfg.proc_path = o->proc_path;
-    cfg.sys_root = o->sys_root;
-    cfg.kernel_release = o->kernel;
-    if (o->moddep_path) {
-        cfg.moddep_path = o->moddep_path;
-    } else {
-        snprintf(moddep, sizeof(moddep), "/lib/modules/%s/modules.dep", o->kernel);
-        cfg.moddep_path = moddep;
-    }
+    make_scan_config(o, &cfg, moddep, sizeof(moddep));
 
     char err[256];
     if (scan_run(&cfg, scan, err, sizeof(err)) != 0) {
@@ -133,10 +154,16 @@ static int load_baseline(const options_t *o, baseline_t *b, const char **note)
 static int emit_report(const options_t *o, const report_ctx_t *ctx)
 {
     if (!o->quiet) {
-        if (o->json)
+        ui_t ui = ui_detect(o->ui_mode, stdout);
+        if (o->json) {
             report_json(stdout, ctx);
-        else
+        } else if (ui_fancy(&ui)) {
+            report_ctx_t styled = *ctx;
+            styled.ui = &ui;
+            report_fancy(stdout, &styled);
+        } else {
             report_text(stdout, ctx);
+        }
     }
     if (o->output) {
         FILE *f = fopen(o->output, "w");
@@ -162,6 +189,13 @@ static int emit_report(const options_t *o, const report_ctx_t *ctx)
     return 0;
 }
 
+static double now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
+}
+
 static int do_scan(const options_t *o, int full)
 {
     scan_result_t scan;
@@ -170,13 +204,16 @@ static int do_scan(const options_t *o, int full)
 
     baseline_t base;
     const char *note;
+    double tb = now_ms();
     int have = load_baseline(o, &base, &note);
+    double t_baseline = now_ms() - tb;
     if (have < 0) {
         scan_free(&scan);
         return 2;
     }
 
     analysis_t an;
+    double ta = now_ms();
     if (analyzer_run(&scan, have ? &base : NULL, &an) != 0) {
         fprintf(stderr, "error: out of memory\n");
         if (have)
@@ -184,8 +221,15 @@ static int do_scan(const options_t *o, int full)
         scan_free(&scan);
         return 2;
     }
+    double t_analyze = now_ms() - ta;
 
-    report_ctx_t ctx = {&scan, &an, have ? &base : NULL, o->baseline_path, note, full};
+    /* stage summary on stderr, only when styling is active for it */
+    ui_t eui = ui_detect(o->ui_mode, stderr);
+    if (ui_fancy(&eui) && !o->json && !o->quiet)
+        progress_print(stderr, &eui, &scan, &an, t_baseline, t_analyze);
+
+    report_ctx_t ctx = {&scan, &an, have ? &base : NULL, o->baseline_path, note, full, NULL,
+                        o->explain, o->proc_path, o->sys_root};
     int rc = emit_report(o, &ctx) == 0 ? 0 : 2;
     if (rc == 0 && an.flagged && an.max_level >= o->fail_on)
         rc = 1;
@@ -199,6 +243,23 @@ static int do_scan(const options_t *o, int full)
 
 static int cmd_scan(const options_t *o) { return do_scan(o, 0); }
 static int cmd_report(const options_t *o) { return do_scan(o, 1); }
+
+static int cmd_monitor(const options_t *o)
+{
+    char moddep[600];
+    monitor_opts_t m;
+    memset(&m, 0, sizeof(m));
+    make_scan_config(o, &m.scan, moddep, sizeof(moddep));
+    m.baseline_path = o->baseline_path;
+    m.interval_ms = (int)(o->interval_s * 1000.0 + 0.5);
+    m.max_scans = o->count;
+    m.ui = ui_detect(o->ui_mode, stdout);
+    m.json = o->json;
+    m.explain = o->explain;
+    m.fail_on = o->fail_on;
+    m.log_path = o->log;
+    return monitor_run(&m);
+}
 
 static int cmd_list(const options_t *o)
 {
@@ -378,6 +439,7 @@ int main(int argc, char **argv)
         .kernel = release,
         .baseline_path = BASELINE_DEFAULT_PATH,
         .fail_on = RISK_HIGH,
+        .interval_s = 2.0,
     };
 
     int cmd = -1;
@@ -394,6 +456,7 @@ int main(int argc, char **argv)
         if (strcmp(a, "--json") == 0) { o.json = 1; continue; }
         if (strcmp(a, "--force") == 0) { o.force = 1; continue; }
         if (strcmp(a, "--quiet") == 0) { o.quiet = 1; continue; }
+        if (strcmp(a, "--explain") == 0) { o.explain = 1; continue; }
         if ((v = opt_value(argc, argv, &i, "--baseline"))) { o.baseline_path = v; continue; }
         if ((v = opt_value(argc, argv, &i, "--output")))   { o.output = v; continue; }
         if ((v = opt_value(argc, argv, &i, "--log")))      { o.log = v; continue; }
@@ -401,6 +464,32 @@ int main(int argc, char **argv)
         if ((v = opt_value(argc, argv, &i, "--sys")))      { o.sys_root = v; continue; }
         if ((v = opt_value(argc, argv, &i, "--moddep")))   { o.moddep_path = v; continue; }
         if ((v = opt_value(argc, argv, &i, "--kernel")))   { o.kernel = v; continue; }
+        if ((v = opt_value(argc, argv, &i, "--interval"))) {
+            char *end;
+            o.interval_s = strtod(v, &end);
+            if (end == v || *end || o.interval_s < 0 || o.interval_s > 3600) {
+                fprintf(stderr, "error: --interval expects seconds between 0 and 3600\n");
+                return 2;
+            }
+            continue;
+        }
+        if ((v = opt_value(argc, argv, &i, "--count"))) {
+            char *end;
+            long n = strtol(v, &end, 10);
+            if (end == v || *end || n < 0 || n > 1000000) {
+                fprintf(stderr, "error: --count expects a non-negative number\n");
+                return 2;
+            }
+            o.count = (int)n;
+            continue;
+        }
+        if ((v = opt_value(argc, argv, &i, "--ui"))) {
+            if (ui_mode_parse(v, &o.ui_mode) != 0) {
+                fprintf(stderr, "error: --ui expects auto|plain|fancy\n");
+                return 2;
+            }
+            continue;
+        }
         if ((v = opt_value(argc, argv, &i, "--fail-on"))) {
             if (risk_level_parse(v, &o.fail_on) != 0) {
                 fprintf(stderr, "error: --fail-on expects low|medium|high|critical\n");

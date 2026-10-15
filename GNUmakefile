@@ -10,6 +10,10 @@
 #   make check      everything, plus the legacy CLI build check
 #   make legacy     build the original phase-2 CLI (src/main.c) as-is
 #   make docker-test / docker-demo / docker-shell
+#
+# Output is kept short (one line per compile/link step, a banner per test
+# stage). Use `make V=1 ...` to see the full compiler commands and the
+# complete list of unit tests.
 
 CC      ?= gcc
 CSTD     = -std=c11 -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE
@@ -32,6 +36,19 @@ LIB_OBJS = $(LIB_SRCS:src/%.c=$(BUILD)/%.o)
 UT_OBJS  = $(UT_SRCS:tests/unit/%.c=$(BUILD)/ut/%.o)
 UT_BIN   = $(BUILD)/unit_tests
 
+MAKEFLAGS += --no-print-directory
+ifeq ($(V),1)
+  Q        :=
+  UT_FLAGS :=
+  say       = @true
+else
+  Q        := @
+  UT_FLAGS := -q
+  say       = @printf '  %-5s %s\n' $(1) $(2)
+endif
+# stage banner: coloured on a terminal, plain otherwise
+banner = @if [ -t 1 ]; then printf '\033[1;36m==>\033[0m \033[1m%s\033[0m\n' '$(1)'; else printf '==> %s\n' '$(1)'; fi
+
 SAN_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer -O1 -g
 SAN_LD    = -fsanitize=address,undefined
 
@@ -42,52 +59,66 @@ all: $(TARGET)
 
 ifneq ($(wildcard $(APP_MAIN)),)
 $(TARGET): $(LIB_OBJS) $(BUILD)/cli.o
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(call say,LD,$@)
+	$(Q)$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 else
 $(TARGET):
 	@echo "no command line front end yet ($(APP_MAIN) missing)"; exit 1
 endif
 
 $(BUILD)/%.o: src/%.c $(wildcard src/*.h) | $(BUILD)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(call say,CC,$<)
+	$(Q)$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/ut/%.o: tests/unit/%.c $(wildcard src/*.h tests/unit/*.h) | $(BUILD)/ut
-	$(CC) $(CFLAGS) -Isrc -c -o $@ $<
+	$(call say,CC,$<)
+	$(Q)$(CC) $(CFLAGS) -Isrc -c -o $@ $<
 
 $(UT_BIN): $(UT_OBJS) $(LIB_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(call say,LD,$@)
+	$(Q)$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(BUILD) $(BUILD)/ut:
-	mkdir -p $@
+	$(Q)mkdir -p $@
 
 # --- tests -----------------------------------------------------------------
 unit: $(UT_BIN)
-	./$(UT_BIN)
+	$(call banner,unit tests)
+	$(Q)./$(UT_BIN) $(UT_FLAGS)
 
 integration: $(TARGET)
-	DETECTOR=./$(TARGET) bash tests/run_tests.sh
+	$(call banner,integration tests: fabricated /proc + /sys systems and the live kernel)
+	$(Q)DETECTOR=./$(TARGET) bash tests/run_tests.sh
+	$(call banner,terminal UI and monitor tests)
+	$(Q)DETECTOR=./$(TARGET) bash tests/run_ui_tests.sh
 
 test: unit integration
 
 # Rebuild everything with AddressSanitizer + UBSan; run unit + integration
 # tests and the mutation fuzzer against the instrumented binaries.
 asan:
-	$(MAKE) clean
-	$(MAKE) BUILD=build-asan CFLAGS="$(SAN_FLAGS)" LDFLAGS="$(SAN_LD)" unit $(TARGET)
-	DETECTOR=./$(TARGET) bash tests/run_tests.sh
-	DETECTOR=./$(TARGET) bash tests/fuzz.sh
-	$(MAKE) clean
+	$(call banner,sanitizer build: AddressSanitizer + UBSan)
+	$(Q)$(MAKE) clean
+	$(Q)$(MAKE) BUILD=build-asan CFLAGS="$(SAN_FLAGS)" LDFLAGS="$(SAN_LD)" unit $(TARGET)
+	$(call banner,integration tests under sanitizers)
+	$(Q)DETECTOR=./$(TARGET) bash tests/run_tests.sh
+	$(Q)DETECTOR=./$(TARGET) bash tests/run_ui_tests.sh
+	$(call banner,mutation fuzzing under sanitizers)
+	$(Q)DETECTOR=./$(TARGET) bash tests/fuzz.sh
+	$(Q)$(MAKE) clean
 
 fuzz:
-	$(MAKE) clean
-	$(MAKE) BUILD=build-asan CFLAGS="$(SAN_FLAGS)" LDFLAGS="$(SAN_LD)" $(TARGET)
-	DETECTOR=./$(TARGET) bash tests/fuzz.sh
-	$(MAKE) clean
+	$(Q)$(MAKE) clean
+	$(Q)$(MAKE) BUILD=build-asan CFLAGS="$(SAN_FLAGS)" LDFLAGS="$(SAN_LD)" $(TARGET)
+	$(call banner,mutation fuzzing under sanitizers)
+	$(Q)DETECTOR=./$(TARGET) bash tests/fuzz.sh
+	$(Q)$(MAKE) clean
 
 check: test legacy-check asan
+	$(call banner,all checks passed)
 
 demo: $(TARGET)
-	DETECTOR=./$(TARGET) bash scripts/demo.sh
+	$(Q)DETECTOR=./$(TARGET) bash scripts/demo.sh
 
 # --- the original phase-2 CLI (src/main.c) ----------------------------------
 # Its sources are UTF-16 files, which compilers cannot read. They are
@@ -99,13 +130,15 @@ LEGACY_BIN   = $(LEGACY_BUILD)/detector-legacy
 LEGACY_UTF   = $(LEGACY_BUILD)/main.c $(LEGACY_BUILD)/metadata.c $(LEGACY_BUILD)/metadata.h
 
 $(LEGACY_BUILD)/%: src/% scripts/to_utf8.sh | $(LEGACY_BUILD)
-	sh scripts/to_utf8.sh $< $@
+	$(call say,UTF8,$<)
+	$(Q)sh scripts/to_utf8.sh $< $@
 
 $(LEGACY_BUILD):
-	mkdir -p $@
+	$(Q)mkdir -p $@
 
 $(LEGACY_BIN): $(LEGACY_UTF) src/module_scanner.c
-	$(CC) $(CFLAGS) -include scanner_decl.h -I$(LEGACY_BUILD) -Isrc -o $@ \
+	$(call say,LD,$@)
+	$(Q)$(CC) $(CFLAGS) -include scanner_decl.h -I$(LEGACY_BUILD) -Isrc -o $@ \
 	    $(LEGACY_BUILD)/main.c $(LEGACY_BUILD)/metadata.c src/module_scanner.c
 
 legacy: $(LEGACY_BIN)
@@ -128,5 +161,5 @@ docker-shell: docker-build
 
 # build/ keeps its tracked .gitignore
 clean:
-	find build -mindepth 1 ! -name .gitignore -delete 2>/dev/null || true
-	rm -rf build-asan $(TARGET)
+	$(Q)find build -mindepth 1 ! -name .gitignore -delete 2>/dev/null || true
+	$(Q)rm -rf build-asan $(TARGET)

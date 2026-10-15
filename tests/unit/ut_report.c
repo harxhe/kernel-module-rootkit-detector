@@ -31,7 +31,7 @@ static void with_report(int full, int json, char **text, int add_hidden)
     }
     analysis_t an;
     CHECK(analyzer_run(&s, NULL, &an) == 0);
-    report_ctx_t ctx = {&s, &an, NULL, "none", "no baseline in this test", full};
+    report_ctx_t ctx = {&s, &an, NULL, "none", "no baseline in this test", full, NULL, 0, NULL, NULL};
     const char *p = "/tmp/kmrd-ut-report";
     FILE *f = fopen(p, "w");
     if (json)
@@ -95,7 +95,7 @@ TEST(report_log_appends)
     records_push(&s.records, &h);
     analysis_t an;
     CHECK(analyzer_run(&s, NULL, &an) == 0);
-    report_ctx_t ctx = {&s, &an, NULL, "x", NULL, 0};
+    report_ctx_t ctx = {&s, &an, NULL, "x", NULL, 0, NULL, 0, NULL, NULL};
     const char *p = "/tmp/kmrd-ut-log";
     unlink(p);
     CHECK(report_append_log(p, &ctx) == 0);
