@@ -1,7 +1,7 @@
 #include "progress.h"
 #include <string.h>
 
-#define LABEL_WIDTH 36
+#define LABEL_WIDTH 42
 
 static int count_rule(const analysis_t *an, const char *rule)
 {

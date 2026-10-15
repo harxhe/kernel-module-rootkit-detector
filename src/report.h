@@ -15,6 +15,9 @@ typedef struct {
     const char *baseline_note;       /* why there is no baseline, or NULL */
     int full;                        /* list every module, not only flagged */
     const ui_t *ui;                  /* styling for report_fancy(); NULL = plain */
+    int explain;                     /* print the raw evidence under each finding */
+    const char *proc_path;           /* shown in evidence; NULL = /proc/modules */
+    const char *sys_root;            /* shown in evidence; NULL = /sys/module */
 } report_ctx_t;
 
 void report_text(FILE *out, const report_ctx_t *ctx);

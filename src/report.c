@@ -1,4 +1,5 @@
 #include "report.h"
+#include "explain.h"
 #include <string.h>
 #include <time.h>
 
@@ -90,9 +91,12 @@ void report_text(FILE *out, const report_ctx_t *c)
                 continue;
             fprintf(out, "[%-8s] %-24s score %3d/100\n", risk_level_name(r->level),
                     r->name, r->score);
-            for (int k = 0; k < r->nfindings; k++)
+            for (int k = 0; k < r->nfindings; k++) {
                 fprintf(out, "    +%-3d %-18s %s\n", r->findings[k].weight,
                         r->findings[k].rule, r->findings[k].reason);
+                if (c->explain)
+                    explain_finding(out, c, r, &r->findings[k], NULL, "          ");
+            }
         }
         rule(out, '-', 72);
     }

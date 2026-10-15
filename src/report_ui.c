@@ -1,4 +1,5 @@
 #include "report.h"
+#include "explain.h"
 #include <string.h>
 #include <time.h>
 
@@ -99,10 +100,13 @@ void report_fancy(FILE *out, const report_ctx_t *c)
         badge(out, ui, r->level, risk_level_name(r->level));
         fprintf(out, " %s%-26s%s %s%s%s %3d/100\n", B, r->name, R,
                 ui_level_style(ui, r->level), bar, R, r->score);
-        for (int k = 0; k < r->nfindings; k++)
+        for (int k = 0; k < r->nfindings; k++) {
             fprintf(out, "      %s+%-3d%s %-19s %s%s%s\n",
                     ui_level_style(ui, r->level), r->findings[k].weight, R,
                     r->findings[k].rule, D, r->findings[k].reason, R);
+            if (c->explain)
+                explain_finding(out, c, r, &r->findings[k], ui, "            ");
+        }
     }
 
     if (c->full) {

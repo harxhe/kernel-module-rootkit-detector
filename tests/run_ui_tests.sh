@@ -125,6 +125,51 @@ has "$ERR" "Reading /sys/module.*unavailable"
 has "$ERR" "Cross-checking both views.*skipped"
 
 # ---------------------------------------------------------------------------
+begin "explain: raw evidence for a module hidden from /proc/modules"
+baselined_system
+fx_add stealth 12288 0 "-" "AAAAAAAAAAAAAAAAAAAAAAA" "" none
+fx_hide_proc stealth
+run_fx scan --explain
+expect_rc 1
+no_esc "$OUT"                                   # plain unless a terminal asks for more
+has "$OUT" "HIDDEN_FROM_PROC"
+has "$OUT" "!! +$FX/proc_modules +not listed"
+has "$OUT" "ok +$FX/sys/stealth +present \\(initstate: live, size 12288\\)"
+hasnt "$OUT" "\\[1/5\\]"
+
+begin "explain: not shown unless asked"
+run_fx scan
+hasnt "$OUT" "not listed"
+
+begin "explain: changed binary shows both values"
+baselined_system
+fx_set_srcversion e1000 "DEADBEEFDEADBEEFDEADBEE"
+fx_set_size e1000 200000
+run_fx scan --explain
+has "$OUT" "baseline +srcversion F6A7B8C9D0E1F2A3B4C5D6E"
+has "$OUT" "now +srcversion DEADBEEFDEADBEEFDEADBEE"
+has "$OUT" "baseline +size 155648 bytes"
+has "$OUT" "now +size 200000 bytes"
+
+begin "explain: fancy mode adds colour and symbols; unloaded baseline module"
+baselined_system
+fx_remove br_netfilter
+run_fx scan --explain --ui fancy
+has_esc "$OUT"
+has "$OUT" "MISSING"
+has "$OUT" "entry exists \\(size 32768\\)"
+has "$OUT" "in neither /proc/modules nor /sys/module"
+has "$OUT" "✔"
+
+begin "explain: also works with 'report' and never leaks into --json"
+fx_add diamorphine 16384 0 "-" "" "OE" none
+run_fx report --explain
+has "$OUT" "name contains 'diamorphine'"
+has "$OUT" "taint"
+run_fx scan --explain --json
+hasnt "$OUT" "loaded with insmod|no entry for|initstate:"
+
+# ---------------------------------------------------------------------------
 echo
 echo "ui integration: $PASS checks passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -37,6 +37,7 @@ typedef struct {
     int json;
     int force;
     int quiet;
+    int explain;
     ui_mode_t ui_mode;
     risk_level_t fail_on;
 } options_t;
@@ -77,6 +78,7 @@ static void usage(FILE *out, const char *prog)
                  "                      (default high)\n"
                  "  --force             create-baseline even if the system looks compromised\n"
                  "  --quiet             do not print the report to stdout\n"
+                 "  --explain           show the raw evidence under each finding (scan, report)\n"
                  "  --ui MODE           auto|plain|fancy: colour and boxes on a terminal\n"
                  "                      (default auto; files, pipes and --json stay plain)\n"
                  "  --proc FILE         /proc/modules path        (testing)\n"
@@ -213,7 +215,8 @@ static int do_scan(const options_t *o, int full)
     if (ui_fancy(&eui) && !o->json && !o->quiet)
         progress_print(stderr, &eui, &scan, &an, t_baseline, t_analyze);
 
-    report_ctx_t ctx = {&scan, &an, have ? &base : NULL, o->baseline_path, note, full, NULL};
+    report_ctx_t ctx = {&scan, &an, have ? &base : NULL, o->baseline_path, note, full, NULL,
+                        o->explain, o->proc_path, o->sys_root};
     int rc = emit_report(o, &ctx) == 0 ? 0 : 2;
     if (rc == 0 && an.flagged && an.max_level >= o->fail_on)
         rc = 1;
@@ -422,6 +425,7 @@ int main(int argc, char **argv)
         if (strcmp(a, "--json") == 0) { o.json = 1; continue; }
         if (strcmp(a, "--force") == 0) { o.force = 1; continue; }
         if (strcmp(a, "--quiet") == 0) { o.quiet = 1; continue; }
+        if (strcmp(a, "--explain") == 0) { o.explain = 1; continue; }
         if ((v = opt_value(argc, argv, &i, "--baseline"))) { o.baseline_path = v; continue; }
         if ((v = opt_value(argc, argv, &i, "--output")))   { o.output = v; continue; }
         if ((v = opt_value(argc, argv, &i, "--log")))      { o.log = v; continue; }

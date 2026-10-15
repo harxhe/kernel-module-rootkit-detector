@@ -17,7 +17,7 @@ static char *render(const ui_t *ui, int add_hidden, int full)
     }
     analysis_t an;
     CHECK(analyzer_run(&s, NULL, &an) == 0);
-    report_ctx_t ctx = {&s, &an, NULL, "none", "no baseline in this test", full, ui};
+    report_ctx_t ctx = {&s, &an, NULL, "none", "no baseline in this test", full, ui, 0, NULL, NULL};
     FILE *f = tmpfile();
     report_fancy(f, &ctx);
     fflush(f);
