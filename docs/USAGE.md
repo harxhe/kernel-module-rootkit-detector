@@ -4,6 +4,23 @@ This documents the integrated detector built in phases 5-8 (`make` produces
 `./detector`). The original phase-2 command skeleton (`src/main.c`) is kept
 unchanged and can still be built with `make legacy`; see [STATUS.md](STATUS.md).
 
+## Quick start
+
+```bash
+sudo apt install -y build-essential git          # once (Debian/Ubuntu)
+git clone https://github.com/harxhe/kernel-module-rootkit-detector
+cd kernel-module-rootkit-detector
+make test
+```
+
+`make test` builds the tool and starts with a quick demo: nine scans on fake
+systems, one line each with the verdict and the reason (clean system, rogue
+module, module hiding from `/proc`, replaced driver, known rootkit name,
+tampered baseline, ...), followed by a real scan of the machine you are on.
+The detailed unit and integration suites run after that. Nothing is loaded
+into the kernel. For just the instant list run `make demo` (or
+`./detector demo`).
+
 ## How it detects rootkits
 
 Loadable-kernel-module (LKM) rootkits run with full kernel privilege and
@@ -45,6 +62,7 @@ README work as well.
 | `compare` | Show modules added / removed / changed since the baseline |
 | `scan` | Full pipeline: scan, baseline comparison, anomaly rules, risk score, report |
 | `report` | Like `scan` but also lists every module |
+| `demo` | Quick self-demonstration: nine scans on fake systems, then this machine |
 | `monitor` | Keep watching: re-scan every few seconds and alert when something changes |
 
 Options:
