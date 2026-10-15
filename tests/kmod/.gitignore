@@ -1,0 +1,10 @@
+# build artifacts of the demo module
+*.ko
+*.o
+*.mod
+*.mod.c
+*.cmd
+.*.cmd
+modules.order
+Module.symvers
+.tmp_versions/
