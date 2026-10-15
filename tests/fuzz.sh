@@ -60,7 +60,7 @@ for n in $(seq 1 "$ITER"); do
     mutate "$WORK/base.orig" "$FX/baseline.txt" $((n + 100000))
     [ $((n % 2)) -eq 0 ] && resign "$FX/baseline.txt"
     mutate "$WORK/dep.orig"  "$FX/modules.dep"  $((n + 200000))
-    for cmd in scan compare list report "scan --json"; do
+    for cmd in scan compare list report "scan --json" "scan --explain --ui fancy" "monitor --count 1 --interval 0 --ui plain"; do
         # shellcheck disable=SC2086,SC2046
         "$DETECTOR" $cmd $(detector_args) >"$WORK/out" 2>&1
         rc=$?
@@ -73,5 +73,5 @@ for n in $(seq 1 "$ITER"); do
         fi
     done
 done
-echo "fuzz: $ITER iterations x 5 commands, $crashes crash(es)"
+echo "fuzz: $ITER iterations x 7 commands, $crashes crash(es)"
 [ "$crashes" -eq 0 ]
