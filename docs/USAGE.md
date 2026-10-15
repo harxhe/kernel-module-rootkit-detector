@@ -45,6 +45,7 @@ README work as well.
 | `compare` | Show modules added / removed / changed since the baseline |
 | `scan` | Full pipeline: scan, baseline comparison, anomaly rules, risk score, report |
 | `report` | Like `scan` but also lists every module |
+| `monitor` | Keep watching: re-scan every few seconds and alert when something changes |
 
 Options:
 
@@ -56,6 +57,10 @@ Options:
 --fail-on LEVEL   exit 1 when a module reaches low|medium|high|critical (default high)
 --force           create-baseline even if the system looks compromised
 --quiet           do not print the report on stdout
+--explain         show the raw evidence under each finding (scan, report, monitor)
+--ui MODE         auto|plain|fancy (default auto, see "Terminal output")
+--interval SEC    monitor: pause between scans (default 2)
+--count N         monitor: stop after N scans (default: until Ctrl+C)
 --proc FILE --sys DIR --moddep FILE --kernel REL    point at fabricated inputs (tests)
 ```
 
@@ -68,6 +73,49 @@ differences for `compare`), `2` error - handy for cron or CI:
 ```bash
 sudo ./detector scan --quiet --log /var/log/kmrd.log || mail -s "module alert" root
 ```
+
+### Terminal output
+
+On a terminal the detector shows a styled report (boxed header, verdict, a
+colour-coded risk bar per module) and a five-step progress summary with the
+real time of each stage on stderr:
+
+```
+  [1/5] Reading /proc/modules ............ 138 modules          ok    0.40 ms
+  [2/5] Reading /sys/module .............. 138 loadable         ok    0.31 ms
+  [3/5] Cross-checking both views ........ 1 mismatch           !!    0.25 ms
+  [4/5] Comparing with baseline .......... 1 new, 0 changed...  !     0.02 ms
+  [5/5] Applying rules and scoring ....... 2 flagged            !!    0.02 ms
+```
+
+`--ui auto` (default) styles only a real terminal: never when output is piped
+or redirected, never with `--json`, `--output` files or `--log`, and not when
+`NO_COLOR` is set or `TERM=dumb`. Unicode boxes and symbols need a UTF-8
+locale, otherwise ASCII look-alikes are used. `--ui plain` turns styling off,
+`--ui fancy` forces it (useful for screenshots).
+
+### Evidence view (`--explain`)
+
+Each finding can be backed by the raw facts, so a verdict can be checked by
+hand with `grep` and `ls`:
+
+```
+[CRITICAL] test_hide     score  80/100
+    +80  HIDDEN_FROM_PROC   loaded (present in /sys/module) but missing from /proc/modules
+          !! /proc/modules               not listed
+          ok /sys/module/test_hide       present (initstate: live, size 12288)
+```
+
+### Live monitor
+
+`detector monitor` re-scans every `--interval` seconds and prints only what
+changed: `INITIAL` (already present at start), `ALERT` (a module starts being
+flagged), `CHANGED` (its findings change), `RESOLVED` (no longer flagged). The
+baseline is re-read every cycle, so editing it while the monitor runs raises
+`BASELINE-INVALID`. `--json` prints one JSON object per line, `--log FILE`
+appends plain event lines, Ctrl+C prints a summary. A demo: run
+`sudo ./detector monitor --explain` in one terminal, load a module in another
+and watch the alert appear.
 
 ### Example
 
@@ -140,6 +188,11 @@ src/baseline.c      checksummed baseline save/load/diff                 (Phase 5
 src/risk.c          weights, 0-100 score, levels                        (Phase 6)
 src/analyzer.c      independent anomaly rules                           (Phase 5)
 src/report.c        text / JSON / history log                           (Phase 7)
+src/ui.c            colour/Unicode detection, boxes, bars              (terminal UI)
+src/report_ui.c     styled report                                      (terminal UI)
+src/progress.c      five-step stage summary with real timings          (terminal UI)
+src/explain.c       raw evidence behind each finding                   (terminal UI)
+src/monitor.c       live monitor mode                                  (terminal UI)
 src/cli.c           integrated command line                             (Phase 7)
 tests/unit/         unit tests, one file per module
 tests/run_tests.sh  integration tests against fabricated /proc and /sys (Phase 8)

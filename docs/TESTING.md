@@ -6,9 +6,12 @@
 |---|---|---|
 | Unit tests | `make unit` | `tests/unit/`, one file per module: utilities, `modules.dep`, sysfs reader, scan (input normalisation, hostile names, cross-view), baseline round-trip / tampering / structure, every analyzer rule, risk thresholds, reports |
 | Integration tests | `make integration` | the real `detector` binary against fabricated systems: every command, every rule end-to-end, exit codes, JSON validity, report/log files, corrupt baselines, missing `/sys` or `modules.dep`, 2000-module scale, the full demo scenario, and a round trip on the *live* host kernel |
+| Terminal UI + monitor | `make integration` | `tests/run_ui_tests.sh`: styling modes (piped output stays plain, `--ui fancy`, `NO_COLOR`), the progress summary, `--explain` evidence for each rule, and `monitor` against systems that change while it runs (module loaded then removed, module hiding itself, baseline tampered, JSON lines, SIGINT/SIGTERM) |
 | Sanitizers | `make asan` | the whole suite rebuilt with AddressSanitizer + UBSan (found a use-after-free in the baseline loader error path during development) |
 | Fuzzing | `make fuzz [ITER=300]` | random byte-level corruption of `/proc/modules`, the baseline (half re-signed with a valid checksum so the structural parser is reached) and `modules.dep`; asserts no crash |
 | Demonstration | `make demo` | scripted incident walk-through (`scripts/demo.sh`) |
+
+Output is kept short: one line per compile step and a banner per test stage. `make V=1 ...` shows the full compiler commands and the complete list of unit tests; `./build/unit_tests -q` lists only failures.
 
 `make check` runs everything (including `make legacy-check`, which proves the original phase-2 CLI still builds from its untouched sources); `make docker-test` does the same inside a clean
 Linux container (this is how the project was verified from a Mac):
