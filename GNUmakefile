@@ -5,7 +5,9 @@
 # exist; it never edits another file.
 #
 #   make            build ./detector
-#   make test       unit + integration tests
+#   make test       quick demo of every scan, then unit + integration tests
+#   make demo       just the quick demo: nine scans on fake systems + this machine
+#   make story      the narrated step-by-step walkthrough (scripts/demo.sh)
 #   make asan       sanitizer build + all tests + fuzzing
 #   make check      everything, plus the legacy CLI build check
 #   make legacy     build the original phase-2 CLI (src/main.c) as-is
@@ -44,15 +46,15 @@ ifeq ($(V),1)
 else
   Q        := @
   UT_FLAGS := -q
-  say       = @printf '  %-5s %s\n' $(1) $(2)
+  say       = @if [ -t 1 ]; then case $(1) in LD) printf '\r\033[K  %-5s %s\n' $(1) $(2);; *) printf '\r\033[K  building %s' $(2);; esac; else printf '  %-5s %s\n' $(1) $(2); fi
 endif
 # stage banner: coloured on a terminal, plain otherwise
-banner = @if [ -t 1 ]; then printf '\033[1;36m==>\033[0m \033[1m%s\033[0m\n' '$(1)'; else printf '==> %s\n' '$(1)'; fi
+banner = @if [ -t 1 ]; then printf '\r\033[K\033[1;36m==>\033[0m \033[1m%s\033[0m\n' '$(1)'; else printf '==> %s\n' '$(1)'; fi
 
 SAN_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer -O1 -g
 SAN_LD    = -fsanitize=address,undefined
 
-.PHONY: all clean test unit integration asan fuzz check demo legacy legacy-check \
+.PHONY: all clean test showcase unit integration asan fuzz check demo story legacy legacy-check \
         docker-build docker-test docker-demo docker-shell
 
 all: $(TARGET)
@@ -92,7 +94,12 @@ integration: $(TARGET)
 	$(call banner,terminal UI and monitor tests)
 	$(Q)DETECTOR=./$(TARGET) bash tests/run_ui_tests.sh
 
-test: unit integration
+# `make test` starts with the quick demo (one line per scan, instant), then runs
+# the detailed unit and integration suites.
+test: showcase unit integration
+
+showcase: $(TARGET)
+	$(Q)./$(TARGET) demo
 
 # Rebuild everything with AddressSanitizer + UBSan; run unit + integration
 # tests and the mutation fuzzer against the instrumented binaries.
@@ -118,6 +125,9 @@ check: test legacy-check asan
 	$(call banner,all checks passed)
 
 demo: $(TARGET)
+	$(Q)./$(TARGET) demo
+
+story: $(TARGET)
 	$(Q)DETECTOR=./$(TARGET) bash scripts/demo.sh
 
 # --- the original phase-2 CLI (src/main.c) ----------------------------------
