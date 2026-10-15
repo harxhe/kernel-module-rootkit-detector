@@ -66,6 +66,7 @@ unit: $(UT_BIN)
 
 integration: $(TARGET)
 	DETECTOR=./$(TARGET) bash tests/run_tests.sh
+	DETECTOR=./$(TARGET) bash tests/run_ui_tests.sh
 
 test: unit integration
 
@@ -75,6 +76,7 @@ asan:
 	$(MAKE) clean
 	$(MAKE) BUILD=build-asan CFLAGS="$(SAN_FLAGS)" LDFLAGS="$(SAN_LD)" unit $(TARGET)
 	DETECTOR=./$(TARGET) bash tests/run_tests.sh
+	DETECTOR=./$(TARGET) bash tests/run_ui_tests.sh
 	DETECTOR=./$(TARGET) bash tests/fuzz.sh
 	$(MAKE) clean
 

@@ -14,6 +14,7 @@
 #include "baseline.h"
 #include "report.h"
 #include "scan.h"
+#include "ui.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +35,7 @@ typedef struct {
     int json;
     int force;
     int quiet;
+    ui_mode_t ui_mode;
     risk_level_t fail_on;
 } options_t;
 
@@ -73,6 +75,8 @@ static void usage(FILE *out, const char *prog)
                  "                      (default high)\n"
                  "  --force             create-baseline even if the system looks compromised\n"
                  "  --quiet             do not print the report to stdout\n"
+                 "  --ui MODE           auto|plain|fancy: colour and boxes on a terminal\n"
+                 "                      (default auto; files, pipes and --json stay plain)\n"
                  "  --proc FILE         /proc/modules path        (testing)\n"
                  "  --sys DIR           /sys/module path          (testing)\n"
                  "  --moddep FILE       modules.dep path          (testing)\n"
@@ -133,10 +137,16 @@ static int load_baseline(const options_t *o, baseline_t *b, const char **note)
 static int emit_report(const options_t *o, const report_ctx_t *ctx)
 {
     if (!o->quiet) {
-        if (o->json)
+        ui_t ui = ui_detect(o->ui_mode, stdout);
+        if (o->json) {
             report_json(stdout, ctx);
-        else
+        } else if (ui_fancy(&ui)) {
+            report_ctx_t styled = *ctx;
+            styled.ui = &ui;
+            report_fancy(stdout, &styled);
+        } else {
             report_text(stdout, ctx);
+        }
     }
     if (o->output) {
         FILE *f = fopen(o->output, "w");
@@ -185,7 +195,7 @@ static int do_scan(const options_t *o, int full)
         return 2;
     }
 
-    report_ctx_t ctx = {&scan, &an, have ? &base : NULL, o->baseline_path, note, full};
+    report_ctx_t ctx = {&scan, &an, have ? &base : NULL, o->baseline_path, note, full, NULL};
     int rc = emit_report(o, &ctx) == 0 ? 0 : 2;
     if (rc == 0 && an.flagged && an.max_level >= o->fail_on)
         rc = 1;
@@ -401,6 +411,13 @@ int main(int argc, char **argv)
         if ((v = opt_value(argc, argv, &i, "--sys")))      { o.sys_root = v; continue; }
         if ((v = opt_value(argc, argv, &i, "--moddep")))   { o.moddep_path = v; continue; }
         if ((v = opt_value(argc, argv, &i, "--kernel")))   { o.kernel = v; continue; }
+        if ((v = opt_value(argc, argv, &i, "--ui"))) {
+            if (ui_mode_parse(v, &o.ui_mode) != 0) {
+                fprintf(stderr, "error: --ui expects auto|plain|fancy\n");
+                return 2;
+            }
+            continue;
+        }
         if ((v = opt_value(argc, argv, &i, "--fail-on"))) {
             if (risk_level_parse(v, &o.fail_on) != 0) {
                 fprintf(stderr, "error: --fail-on expects low|medium|high|critical\n");
