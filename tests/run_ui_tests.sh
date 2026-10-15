@@ -91,6 +91,40 @@ expect_rc 2
 has "$ERR" "--ui expects"
 
 # ---------------------------------------------------------------------------
+begin "progress: five stages with real timings on stderr (fancy only)"
+baselined_system
+run_fx scan --ui fancy
+has "$ERR" "\\[1/5\\].*Reading /proc/modules.*9 modules"
+has "$ERR" "\\[2/5\\].*Reading /sys/module.*9 loadable"
+has "$ERR" "\\[3/5\\].*Cross-checking both views.*views agree"
+has "$ERR" "\\[4/5\\].*Comparing with baseline.*0 new, 0 changed, 0 gone"
+has "$ERR" "\\[5/5\\].*Applying rules and scoring.*0 flagged"
+has "$ERR" "[0-9]+\\.[0-9]{2} ms"
+hasnt "$OUT" "\\[1/5\\]"                # progress never mixes into the report
+
+begin "progress: reflects findings (mismatch, new module, flagged)"
+fx_add stealth 12288 0 "-" "AAAAAAAAAAAAAAAAAAAAAAA" "" none
+fx_hide_proc stealth
+fx_add rogue 4096 0 "-" "BBBBBBBBBBBBBBBBBBBBBBB" "" none
+run_fx scan --ui fancy
+has "$ERR" "Cross-checking both views.*1 mismatch"
+has "$ERR" "Comparing with baseline.*1 new"
+has "$ERR" "Applying rules and scoring.*2 flagged"
+
+begin "progress: silent for plain, --json, --quiet and when piped"
+run_fx scan --ui plain;               [ -z "$ERR" ] && ok || bad "plain wrote to stderr" "$ERR"
+run_fx scan --ui fancy --json;        [ -z "$ERR" ] && ok || bad "--json wrote to stderr" "$ERR"
+run_fx scan --ui fancy --quiet;       [ -z "$ERR" ] && ok || bad "--quiet wrote to stderr" "$ERR"
+run_fx scan;                          [ -z "$ERR" ] && ok || bad "piped run wrote to stderr" "$ERR"
+
+begin "progress: notes missing baseline and unreadable /sys"
+fx_init "$WORK/fx2"; fx_base_system
+run_fx scan --ui fancy --baseline "$WORK/none" --sys "$WORK/no-such-sys"
+has "$ERR" "Comparing with baseline.*no baseline"
+has "$ERR" "Reading /sys/module.*unavailable"
+has "$ERR" "Cross-checking both views.*skipped"
+
+# ---------------------------------------------------------------------------
 echo
 echo "ui integration: $PASS checks passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

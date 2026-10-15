@@ -20,6 +20,9 @@ typedef struct {
     char kernel[64];
     time_t when;
     double elapsed_ms;
+    double t_proc_ms;           /* reading /proc/modules */
+    double t_sys_ms;            /* reading /sys/module and modules.dep */
+    double t_cross_ms;          /* building records, cross-view, sorting */
 } scan_result_t;
 
 /* Run a complete scan: /proc/modules, /sys/module, modules.dep.

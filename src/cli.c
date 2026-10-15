@@ -12,6 +12,7 @@
 
 #include "analyzer.h"
 #include "baseline.h"
+#include "progress.h"
 #include "report.h"
 #include "scan.h"
 #include "ui.h"
@@ -21,6 +22,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
+#include <time.h>
 
 #define VERSION "1.0.0"
 
@@ -172,6 +174,13 @@ static int emit_report(const options_t *o, const report_ctx_t *ctx)
     return 0;
 }
 
+static double now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
+}
+
 static int do_scan(const options_t *o, int full)
 {
     scan_result_t scan;
@@ -180,13 +189,16 @@ static int do_scan(const options_t *o, int full)
 
     baseline_t base;
     const char *note;
+    double tb = now_ms();
     int have = load_baseline(o, &base, &note);
+    double t_baseline = now_ms() - tb;
     if (have < 0) {
         scan_free(&scan);
         return 2;
     }
 
     analysis_t an;
+    double ta = now_ms();
     if (analyzer_run(&scan, have ? &base : NULL, &an) != 0) {
         fprintf(stderr, "error: out of memory\n");
         if (have)
@@ -194,6 +206,12 @@ static int do_scan(const options_t *o, int full)
         scan_free(&scan);
         return 2;
     }
+    double t_analyze = now_ms() - ta;
+
+    /* stage summary on stderr, only when styling is active for it */
+    ui_t eui = ui_detect(o->ui_mode, stderr);
+    if (ui_fancy(&eui) && !o->json && !o->quiet)
+        progress_print(stderr, &eui, &scan, &an, t_baseline, t_analyze);
 
     report_ctx_t ctx = {&scan, &an, have ? &base : NULL, o->baseline_path, note, full, NULL};
     int rc = emit_report(o, &ctx) == 0 ? 0 : 2;
