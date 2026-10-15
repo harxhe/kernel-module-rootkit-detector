@@ -12,6 +12,7 @@
 
 #include "analyzer.h"
 #include "baseline.h"
+#include "demo.h"
 #include "monitor.h"
 #include "progress.h"
 #include "report.h"
@@ -53,6 +54,7 @@ static int cmd_create_baseline(const options_t *o);
 static int cmd_compare(const options_t *o);
 static int cmd_report(const options_t *o);
 static int cmd_monitor(const options_t *o);
+static int cmd_demo(const options_t *o);
 
 static const struct {
     const char *name;
@@ -64,6 +66,7 @@ static const struct {
     {"create-baseline", cmd_create_baseline, "Record the current modules as the trusted baseline"},
     {"compare", cmd_compare, "Show modules added/removed/changed since the baseline"},
     {"report", cmd_report, "Full detection report (all modules, optional file/log)"},
+    {"demo", cmd_demo, "Quick self-demonstration: 9 scans on fake systems, then this machine"},
     {"monitor", cmd_monitor, "Keep watching: re-scan every few seconds and alert on changes"},
     {NULL, NULL, NULL},
 };
@@ -243,6 +246,12 @@ static int do_scan(const options_t *o, int full)
 
 static int cmd_scan(const options_t *o) { return do_scan(o, 0); }
 static int cmd_report(const options_t *o) { return do_scan(o, 1); }
+
+static int cmd_demo(const options_t *o)
+{
+    ui_t ui = ui_detect(o->ui_mode, stdout);
+    return demo_run(stdout, &ui);
+}
 
 static int cmd_monitor(const options_t *o)
 {

@@ -10,7 +10,7 @@
 #   4. "load" a rootkit that hides itself from /proc/modules -> CRITICAL
 #   5. remove both                  -> clean again
 #
-#   make demo            (or: make docker-demo)
+#   make story           (the quick one-line-per-scan version is: make demo)
 
 set -u
 HERE="$(cd "$(dirname "$0")/.." && pwd)"

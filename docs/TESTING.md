@@ -13,6 +13,8 @@
 
 Output is kept short: one line per compile step and a banner per test stage. `make V=1 ...` shows the full compiler commands and the complete list of unit tests; `./build/unit_tests -q` lists only failures.
 
+`make test` starts with `detector demo` (nine scans on fake systems, one line each with its verdict, plus a live scan of the host) before the detailed suites; `make demo` runs only that, and `make story` runs the narrated step-by-step walkthrough in `scripts/demo.sh`.
+
 `make check` runs everything (including `make legacy-check`, which proves the original phase-2 CLI still builds from its untouched sources); `make docker-test` does the same inside a clean
 Linux container (this is how the project was verified from a Mac):
 
