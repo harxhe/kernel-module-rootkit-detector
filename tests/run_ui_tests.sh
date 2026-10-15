@@ -277,6 +277,40 @@ run_fx monitor --count -1;              expect_rc 2; has "$ERR" "--count expects
 run_fx monitor --count 1 --proc "$WORK/none"; expect_rc 2; has "$ERR" "scan failed"
 
 # ---------------------------------------------------------------------------
+begin "demo: one command lists every scan with its verdict"
+mkdir -p "$WORK/tmpd"
+OUT="$(TMPDIR="$WORK/tmpd" "$DETECTOR" demo --ui plain 2>"$WORK/err")"; RC=$?; ERR="$(cat "$WORK/err")"
+expect_rc 0
+no_esc "$OUT"
+has "$OUT" "9/9 scans gave the expected verdict"
+has "$OUT" "Clean system, nothing changed.* CLEAN +0 +nothing flagged"
+has "$OUT" "New driver installed the normal way.* MEDIUM +40 +dummy: NOT_IN_BASELINE"
+has "$OUT" "Unknown module loaded with insmod.* HIGH +65 +evilmod: NOT_IN_BASELINE \+ NO_MODULE_FILE"
+has "$OUT" "hides itself from /proc/modules.* CRITICAL +80 +stealth: HIDDEN_FROM_PROC"
+has "$OUT" "hides itself from /sys/module.* HIGH +60 +usbhid: HIDDEN_FROM_SYSFS"
+has "$OUT" "Driver binary replaced.* HIGH +60 +e1000: SRCVERSION_CHANGED"
+has "$OUT" "Known rootkit name.* CRITICAL +100 +diamorphine: SUSPICIOUS_NAME"
+has "$OUT" "Module disappeared.* LOW +10 +br_netfilter: MISSING"
+has "$OUT" "Baseline file edited by an attacker.* REFUSED"
+has "$OUT" "This machine"
+[ -z "$(ls -A "$WORK/tmpd")" ] && ok || bad "demo left files behind in TMPDIR" "$(ls -A "$WORK/tmpd")"
+[ -z "$ERR" ] && ok || bad "demo wrote to stderr" "$ERR"
+
+begin "demo: fancy mode, speed, and unwritable TMPDIR"
+OUT="$("$DETECTOR" demo --ui fancy 2>&1)"; RC=$?
+expect_rc 0
+has_esc "$OUT"
+has "$OUT" "✔"
+has "$OUT" "╭"
+S=$(date +%s)
+"$DETECTOR" demo --ui plain >/dev/null 2>&1
+E=$(date +%s)
+[ $((E - S)) -le 3 ] && ok || bad "demo took $((E - S))s, should be near-instant"
+OUT="$(TMPDIR=/nonexistent-tmp "$DETECTOR" demo --ui plain 2>&1)"; RC=$?
+expect_rc 2
+has "$OUT" "cannot create a temporary directory"
+
+# ---------------------------------------------------------------------------
 echo
 echo "ui integration: $PASS checks passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
